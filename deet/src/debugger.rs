@@ -9,6 +9,16 @@ pub struct Debugger {
     readline: Editor<()>,
     inferior: Option<Inferior>,
     debug_data: DwarfData,
+    vec_breaks: Vec<usize>,
+}
+
+fn parse_address(addr: &str) -> Option<usize> {
+    let addr_without_0x = if addr.to_lowercase().starts_with("0x") {
+        &addr[2..]
+    } else {
+        &addr
+    };
+    usize::from_str_radix(addr_without_0x, 16).ok()
 }
 
 impl Debugger {
@@ -29,13 +39,15 @@ impl Debugger {
         let mut readline = Editor::<()>::new();
         // Attempt to load history from ~/.deet_history if it exists
         let _ = readline.load_history(&history_path);
-
+        let vec_breaks: Vec<usize> = Vec::new();
+        debug_data.print();
         Debugger {
             target: target.to_string(),
             history_path,
             readline,
             inferior: None,
             debug_data: debug_data,
+            vec_breaks: vec_breaks,
         }
     }
 
@@ -46,7 +58,8 @@ impl Debugger {
                     if self.inferior.is_some() {
                         println!("some process running");
                     } else {
-                        if let Some(inferior) = Inferior::new(&self.target, &args) {
+                        if let Some(inferior) = Inferior::new(&self.target, &args, &self.vec_breaks)
+                        {
                             self.inferior = Some(inferior);
                             match self
                                 .inferior
@@ -58,8 +71,9 @@ impl Debugger {
                                 crate::inferior::Status::Stopped(_sig, _rip) => {
                                     println!("Child stopped by signal ({})", _sig,);
                                     let line = self.debug_data.get_line_from_addr(_rip);
+                                    let fun = self.debug_data.get_function_from_addr(_rip);
                                     if line.is_some() {
-                                        println!("Stopped at {}", line.unwrap());
+                                        println!("Stopped at {} ({})", fun.unwrap(), line.unwrap());
                                     }
                                 }
                                 crate::inferior::Status::Exited(_code) => {
@@ -104,8 +118,9 @@ impl Debugger {
                             crate::inferior::Status::Stopped(_sig, _rip) => {
                                 println!("Child stopped by signal ({})", _sig);
                                 let line = self.debug_data.get_line_from_addr(_rip);
+                                let fun = self.debug_data.get_function_from_addr(_rip);
                                 if line.is_some() {
-                                    println!("Stopped at {}", line.unwrap());
+                                    println!("Stopped at {} ({})", fun.unwrap(), line.unwrap());
                                 }
                             }
                             crate::inferior::Status::Exited(_code) => {
@@ -128,6 +143,48 @@ impl Debugger {
                             .unwrap()
                             .print_backtrace(&self.debug_data)
                             .expect("ssss");
+                    }
+                }
+                DebuggerCommand::Break(args) => {
+                    let addr: Option<usize> = if args.starts_with("*") {
+                        let _addr = parse_address(&args[1..]);
+                        match _addr {
+                            Some(_a) => Some(_a),
+                            None => None,
+                        }
+                    } else {
+                        None
+                    };
+                    if self.inferior.is_none() {
+                        match addr {
+                            Some(_addr) => {
+                                self.vec_breaks.push(_addr);
+                                println!(
+                                    "Set breakpoit {} at {:#x}",
+                                    self.vec_breaks.len() - 1,
+                                    _addr
+                                );
+                            }
+                            None => println!("Invalid breakpoint address"),
+                        }
+                    } else {
+                        match addr {
+                            Some(_addr) => {
+                                self.vec_breaks.push(_addr);
+                                if let Ok(_) =
+                                    self.inferior.as_mut().unwrap().write_byte(_addr, 0xcc)
+                                {
+                                    println!(
+                                        "Set breakpoit {} at {:#x}",
+                                        self.vec_breaks.len() - 1,
+                                        _addr
+                                    )
+                                } else {
+                                    println!("Invalid breakpoint address")
+                                }
+                            }
+                            None => println!("Invalid breakpoint address"),
+                        }
                     }
                 }
             }
