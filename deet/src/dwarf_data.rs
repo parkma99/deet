@@ -59,9 +59,9 @@ impl DwarfData {
         };
         Some(
             target_file
-                .lines
+                .functions
                 .iter()
-                .find(|line| line.number >= line_number)?
+                .find(|func| func.line_number == line_number)?
                 .address,
         )
     }
