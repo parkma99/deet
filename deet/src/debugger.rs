@@ -155,7 +155,11 @@ impl Debugger {
                             None => None,
                         }
                     } else {
-                        None
+                        let line =  usize::from_str_radix(&args, 10);
+                        match line {
+                            Ok(_line) => {println!("{:?}",self.debug_data.get_addr_for_line(None,_line)); self.debug_data.get_addr_for_line(None,_line)}
+                            Err(_) => {println!("{:?}",self.debug_data.get_addr_for_function(None,&args)); self.debug_data.get_addr_for_function(None,&args)}
+                        }
                     };
                     match addr {
                         Some(_addr) => {
